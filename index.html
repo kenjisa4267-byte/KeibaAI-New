@@ -1,0 +1,126 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEIBA AI</title>
+<style>
+body{font-family:sans-serif;background:#f3f5f8;margin:0;color:#222;padding:18px}
+header{background:#183b32;color:white;padding:22px;border-radius:14px}
+h1{margin:0;font-size:27px}
+.card{background:white;padding:18px;border-radius:14px;margin-top:16px}
+button{padding:13px;border:0;border-radius:9px;background:#246b50;color:white;font-size:16px;margin:4px}
+button.active{background:#d99a27}
+input,select{padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;width:100%;box-sizing:border-box;margin:6px 0}
+table{width:100%;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #ddd;text-align:center}
+.small{color:#777;font-size:13px}
+.result{font-weight:bold;color:#17633e}
+</style>
+</head>
+<body>
+<header>
+<h1>🏇 KEIBA AI</h1>
+<p>Personal Horse Racing Prediction</p>
+</header>
+
+<div class="card">
+<h2>① 競馬を選択</h2>
+<button id="jra" class="active" onclick="setType('JRA')">JRA中央競馬</button>
+<button id="local" onclick="setType('地方')">地方競馬</button>
+<p id="type">JRA中央競馬</p>
+</div>
+
+<div class="card">
+<h2>② レース情報</h2>
+<label>競馬場</label>
+<input id="place" placeholder="例：東京・船橋">
+<label>レース番号</label>
+<input id="race" type="number" placeholder="例：11">
+</div>
+
+<div class="card">
+<h2>③ 出走馬登録</h2>
+<label>馬名</label>
+<input id="horse" placeholder="馬名を入力">
+<label>近走評価（1～10）</label>
+<input id="ability" type="number" min="1" max="10" value="5">
+<label>距離・コース適性（1～10）</label>
+<input id="course" type="number" min="1" max="10" value="5">
+<label>展開・脚質評価（1～10）</label>
+<input id="pace" type="number" min="1" max="10" value="5">
+<label>騎手評価（1～10）</label>
+<input id="jockey" type="number" min="1" max="10" value="5">
+<button onclick="addHorse()">馬を登録する</button>
+<p class="small">各評価は入力した仮評価です。実際の競走データとはまだ連動していません。</p>
+</div>
+
+<div class="card">
+<h2>④ 登録馬一覧</h2>
+<div id="list">まだ馬が登録されていません。</div>
+<button onclick="predict()">AI予想順位を計算</button>
+</div>
+
+<div class="card">
+<h2>⑤ 予想結果</h2>
+<div id="result">出走馬を登録してください。</div>
+</div>
+
+<p class="small">KEIBA AI 新規開発版 / Ver.1.0</p>
+
+<script>
+let horses=[];
+let raceType="JRA";
+
+function setType(type){
+raceType=type;
+document.getElementById("type").textContent=
+type==="JRA"?"JRA中央競馬":"地方競馬";
+document.getElementById("jra").classList.toggle("active",type==="JRA");
+document.getElementById("local").classList.toggle("active",type==="地方");
+}
+
+function addHorse(){
+let name=document.getElementById("horse").value.trim();
+if(!name){alert("馬名を入力してください");return;}
+let h={
+name:name,
+ability:Number(document.getElementById("ability").value),
+course:Number(document.getElementById("course").value),
+pace:Number(document.getElementById("pace").value),
+jockey:Number(document.getElementById("jockey").value)
+};
+if([h.ability,h.course,h.pace,h.jockey].some(v=>!Number.isFinite(v)||v<1||v>10)){
+alert("評価は1から10で入力してください");return;
+}
+horses.push(h);
+document.getElementById("horse").value="";
+showHorses();
+}
+
+function showHorses(){
+document.getElementById("list").innerHTML=
+horses.map((h,i)=>(i+1)+"番："+h.name).join("<br>");
+}
+
+function predict(){
+if(horses.length<2){alert("2頭以上登録してください");return;}
+let sorted=horses.map(h=>({
+...h,
+score:h.ability*0.4+h.course*0.25+
+h.pace*0.2+h.jockey*0.15
+})).sort((a,b)=>b.score-a.score);
+document.getElementById("result").innerHTML=
+"<p>"+raceType+" "+document.getElementById("place").value+
+" "+document.getElementById("race").value+"R</p>"+
+"<table><tr><th>順位</th><th>馬名</th><th>評価点</th></tr>"+
+sorted.map((h,i)=>"<tr><td>"+(i+1)+
+"</td><td>"+h.name+"</td><td>"+h.score.toFixed(2)+
+"</td></tr>").join("")+"</table>"+
+"<p class='result'>1位候補："+sorted[0].name+"</p>"+
+"<p>穴馬候補："+(sorted.length>=3?sorted[sorted.length-1].name:"登録馬不足")+"</p>";
+}
+</script>
+</body>
+</html>
