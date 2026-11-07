@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEIBA AI Ver.2</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f5f8;margin:0;color:#222}
+header{background:#183b32;color:white;padding:18px 14px;text-align:center}
+header h1{margin:0;font-size:25px}
+header p{margin:6px 0 0;font-size:13px}
+.card{background:white;margin:12px;padding:15px;border-radius:12px;box-shadow:0 1px 4px #0001}
+h2{font-size:18px;margin:0 0 12px}
+label{display:block;font-size:14px;margin-top:8px}
+input,select,button{font:inherit;padding:11px;margin:5px 0;border-radius:7px;border:1px solid #ccc;max-width:100%}
+input,select{width:100%;background:white}
+button{background:#245b49;color:white;border:0;font-weight:600;width:100%}
+button.secondary{background:#667085}
+button.danger{background:#a33}
+.small{font-size:12px;color:#666;line-height:1.6}
+.notice{background:#fff8e7;padding:10px;border-radius:8px;font-size:13px;line-height:1.6}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:300px}
+td,th{padding:8px;border-bottom:1px solid #ddd;text-align:center}
+th{background:#f1f4f2}
+.result{font-weight:bold;color:#17633e}
+.actions{display:flex;gap:8px}
+.actions button{flex:1}
+</style>
+</head>
+<body>
+<header>
+<h1>🐎 KEIBA AI</h1>
+<p>競馬予想・CSV照合システム Ver.2</p>
+</header>
+
+<div class="card">
+<h2>① レース情報</h2>
+<label>競馬区分</label>
+<select id="type"><option>JRA中央競馬</option><option>地方競馬</option></select>
+<label>競馬場</label>
+<input id="place" placeholder="例：東京・船橋">
+<label>レース番号</label>
+<input id="race" type="number" min="1" max="12" placeholder="例：11">
+</div>
+
+<div class="card">
+<h2>② 出走馬CSV読み込み</h2>
+<p class="small">CSVの列順：馬名,近走,距離,展開,騎手,能力（評価は各1～10）</p>
+<input type="file" id="horseFile" accept=".csv,text/csv">
+<button onclick="loadHorses()">出走馬CSVを読み込む</button>
+<p id="csvMessage" class="small"></p>
+</div>
+
+<div class="card">
+<h2>③ 馬を手入力で登録</h2>
+<label>馬名</label><input id="horse" placeholder="馬名を入力">
+<label>能力評価（1～10）</label><input id="ability" type="number" min="1" max="10" value="5">
+<label>近走評価（1～10）</label><input id="recent" type="number" min="1" max="10" value="5">
+<label>距離・コース適性（1～10）</label><input id="course" type="number" min="1" max="10" value="5">
+<label>展開・脚質評価（1～10）</label><input id="pace" type="number" min="1" max="10" value="5">
+<label>騎手評価（1～10）</label><input id="jockey" type="number" min="1" max="10" value="5">
+<button onclick="addHorse()">馬を登録する</button>
+</div>
+
+<div class="card">
+<h2>④ 登録馬一覧</h2>
+<div id="list">まだ馬が登録されていません。</div>
+<div class="actions">
+<button onclick="predict()">予想順位を計算</button>
+<button class="secondary" onclick="clearHorses()">全消去</button>
+</div>
+</div>
+
+<div class="card">
+<h2>⑤ 予想結果</h2>
+<div id="result">出走馬を登録してください。</div>
+</div>
+
+<div class="card">
+<h2>⑥ レース結果CSVで照合</h2>
+<p class="small">CSVの列順：馬名,着順</p>
+<input type="file" id="resultFile" accept=".csv,text/csv">
+<button onclick="compareResults()">結果CSVを読み込んで照合</button>
+<div id="comparison"></div>
+</div>
+
+<div class="card">
+<h2>⑦ このアプリについて</h2>
+<div class="notice">このバージョンは、入力された評価を使って順位を計算する予想支援ツールです。実際の競馬データ・オッズ・天候を自動取得する機能はまだありません。予想は的中を保証するものではありません。</div>
+<p class="small">登録馬はこの端末のブラウザ内に保存されます。ブラウザのデータを消去すると登録内容も消える場合があります。</p>
+</div>
+
+<script>
+"use strict";
+let horses=[];
+let predictions=[];
+
+function escapeHTML(value){
+ return String(value).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+ });
+}
+function getScore(id){
+ const raw=Number(document.getElementById(id).value);
+ if(!Number.isFinite(raw)||raw<1||raw>10){
+  throw new Error("評価は1～10の数字で入力してください。");
+ }
+ return raw;
+}
+function saveHorses(){
+ try{localStorage.setItem("keibaAI_v2_horses",JSON.stringify(horses));}
+ catch(e){alert("端末への保存ができませんでした。");}
+}
+function restoreHorses(){
+ try{
+  const saved=JSON.parse(localStorage.getItem("keibaAI_v2_horses")||"[]");
+  if(Array.isArray(saved))horses=saved;
+ }catch(e){horses=[];}
+ showHorses();
+}
+function addHorse(){
+ const name=document.getElementById("horse").value.trim();
+ if(!name){alert("馬名を入力してください。");return;}
+ if(horses.some(h=>h.name===name)){alert("同じ馬名が登録されています。");return;}
+ try{
+  horses.push({
+   name:name,
+   ability:getScore("ability"),
+   recent:getScore("recent"),
+   course:getScore("course"),
+   pace:getScore("pace"),
+   jockey:getScore("jockey")
+  });
+  saveHorses();showHorses();
+  document.getElementById("horse").value="";
+ }catch(e){alert(e.message);}
+}
+function showHorses(){
+ const target=document.getElementById("list");
+ if(!horses.length){target.textContent="まだ馬が登録されていません。";return;}
+ let html="<div class='table-wrap'><table><tr><th>馬名</th><th>能力</th><th>近走</th><th>距離</th><th>展開</th><th>騎手</th></tr>";
+ horses.forEach(h=>{
+  html+="<tr><td>"+escapeHTML(h.name)+"</td><td>"+h.ability+"</td><td>"+h.recent+"</td><td>"+h.course+"</td><td>"+h.pace+"</td><td>"+h.jockey+"</td></tr>";
+ });
+ target.innerHTML=html+"</table></div><p class='small'>登録頭数："+horses.length+"頭</p>";
+}
+function clearHorses(){
+ if(!confirm("登録馬をすべて消去しますか？"))return;
+ horses=[];predictions=[];saveHorses();showHorses();
+ document.getElementById("result").textContent="出走馬を登録してください。";
+ document.getElementById("comparison").innerHTML="";
+}
+function predict(){
+ if(horses.length<2){alert("2頭以上登録してください。");return;}
+ predictions=horses.map(h=>({
+  ...h,
+  score:h.ability*0.20+h.recent*0.25+h.course*0.20+h.pace*0.20+h.jockey*0.15
+ })).sort((a,b)=>b.score-a.score);
+ let html="<p>"+escapeHTML(document.getElementById("type").value)+"　"+
+ escapeHTML(document.getElementById("place").value)+"　"+
+ escapeHTML(document.getElementById("race").value)+"R</p>";
+ html+="<div class='table-wrap'><table><tr><th>予想順位</th><th>馬名</th><th>評価点</th></tr>";
+ predictions.forEach((h,i)=>{
+  html+="<tr><td>"+(i+1)+"位</td><td>"+escapeHTML(h.name)+"</td><td>"+h.score.toFixed(2)+"</td></tr>";
+ });
+ html+="</table></div><p class='result'>1位候補："+escapeHTML(predictions[0].name)+"</p>";
+ if(predictions.length>=3){
+  html+="<p>穴馬候補（評価順位最下位）："+escapeHTML(predictions[predictions.length-1].name)+"</p>";
+ }
+ document.getElementById("result").innerHTML=html;
+ document.getElementById("comparison").innerHTML="";
+}
+function parseCSV(text){
+ const rows=[];let row=[],cell="",quoted=false;
+ text=text.replace(/^\uFEFF/,"");
+ for(let i=0;i<text.length;i++){
+  const c=text[i];
+  if(c==='"'&&quoted&&text[i+1]==='"'){cell+='"';i++;}
+  else if(c==='"'){quoted=!quoted;}
+  else if(c===","&&!quoted){row.push(cell.trim());cell="";}
+  else if((c==="\n"||c==="\r")&&!quoted){
+   if(c==="\r"&&text[i+1]==="\n")i++;
+   row.push(cell.trim());
+   if(row.some(x=>x!==""))rows.push(row);
+   row=[];cell="";
+  }else{cell+=c;}
+ }
+ row.push(cell.trim());
+ if(row.some(x=>x!==""))rows.push(row);
+ return rows;
+}
+async function readCSV(inputId){
+ const file=document.getElementById(inputId).files[0];
+ if(!file)throw new Error("先にCSVファイルを選択してください。");
+ return parseCSV(await file.text());
+}
+async function loadHorses(){
+ try{
+  const rows=await readCSV("horseFile");
+  if(!rows.length)throw new Error("CSVにデータがありません。");
+  const first=rows[0][0].replace(/^\uFEFF/,"");
+  const start=first==="馬名"?1:0;
+  let count=0;
+  for(let i=start;i<rows.length;i++){
+   const r=rows[i];
+   if(!r[0])continue;
+   const vals=r.slice(1,6).map(v=>{
+    const n=Number(v);
+    return Number.isFinite(n)&&n>=1&&n<=10?n:5;
+   });
+   const h={
+    name:r[0],
+    recent:vals[0]??5,
+    course:vals[1]??5,
+    pace:vals[2]??5,
+    jockey:vals[3]??5,
+    ability:vals[4]??5
+   };
+   if(!horses.some(x=>x.name===h.name)){horses.push(h);count++;}
+  }
+  saveHorses();showHorses();
+  document.getElementById("csvMessage").textContent=count+"頭を登録しました。";
+ }catch(e){alert(e.message);}
+}
+async function compareResults(){
+ try{
+  if(!predictions.length)throw new Error("先に予想順位を計算してください。");
+  const rows=await readCSV("resultFile");
+  if(!rows.length)throw new Error("結果CSVにデータがありません。");
+  const start=rows[0][0]==="馬名"?1:0;
+  const actual={};
+  for(let i=start;i<rows.length;i++){
+   const name=(rows[i][0]||"").trim();
+   const rank=Number(rows[i][1]);
+   if(name&&Number.isInteger(rank)&&rank>0)actual[name]=rank;
+  }
+  let html="<div class='table-wrap'><table><tr><th>予想順位</th><th>馬名</th><th>実際の着順</th></tr>";
+  predictions.forEach((h,i)=>{
+   html+="<tr><td>"+(i+1)+"位</td><td>"+escapeHTML(h.name)+"</td><td>"+(actual[h.name]||"未登録")+"</td></tr>";
+  });
+  html+="</table></div>";
+  document.getElementById("comparison").innerHTML=html;
+ }catch(e){alert(e.message);}
+}
+restoreHorses();
+</script>
+</body>
+</html>
