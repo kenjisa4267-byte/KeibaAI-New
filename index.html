@@ -84,6 +84,7 @@ document.getElementById("local").classList.toggle("active",type==="地方");
 function addHorse(){
 let name=document.getElementById("horse").value.trim();
 if(!name){alert("馬名を入力してください");return;}
+if(horses.some(h=>h.name===name)){alert("この馬は既に登録されています");return;}
 let h={
 name:name,
 ability:Number(document.getElementById("ability").value),
