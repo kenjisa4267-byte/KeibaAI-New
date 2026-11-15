@@ -80,7 +80,81 @@ type==="JRA"?"JRA中央競馬":"地方競馬";
 document.getElementById("jra").classList.toggle("active",type==="JRA");
 document.getElementById("local").classList.toggle("active",type==="地方");
 }
+async function importCSV(){
 
+ const file=document.getElementById("csvFile").files[0];
+
+ if(!file){
+
+  alert("CSVファイルを選択してください");
+
+  return;
+
+ }
+
+ const reader=new FileReader();
+
+ reader.onload=function(){
+
+  const rows=reader.result.replace(/^\uFEFF/,"").split(/\r?\n/);
+
+  let count=0;
+
+  let skip=0;
+
+  rows.forEach((row,i)=>{
+
+   if(!row.trim())return;
+
+   const c=row.split(",").map(v=>v.trim());
+
+   if(i===0&&c[0]==="馬名")return;
+
+   if(c.length<5){skip++;return;}
+
+   const name=c[0];
+
+   const scores=c.slice(1,5).map(Number);
+
+   if(!name||scores.some(v=>!Number.isInteger(v)||v<1||v>10)){
+
+    skip++;return;
+
+   }
+
+   if(horses.some(h=>h.name===name)){
+
+    skip++;return;
+
+   }
+
+   horses.push({
+
+    name:name,
+
+    ability:scores[0],
+
+    course:scores[1],
+
+    pace:scores[2],
+
+    jockey:scores[3]
+
+   });
+
+   count++;
+
+  });
+
+  showHorses();
+
+  alert(count+"頭登録しました。スキップ："+skip+"件");
+
+ };
+
+ reader.readAsText(file,"UTF-8");
+
+}
 function addHorse(){
 let name=document.getElementById("horse").value.trim();
 if(!name){alert("馬名を入力してください");return;}
