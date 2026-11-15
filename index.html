@@ -55,7 +55,11 @@ td,th{padding:10px;border-bottom:1px solid #ddd;text-align:center}
 <button onclick="addHorse()">馬を登録する</button>
 <p class="small">各評価は入力した仮評価です。実際の競走データとはまだ連動していません。</p>
 </div>
+<label>CSV一括登録</label>
 
+<input type="file" id="csvFile" accept=".csv">
+
+<button onclick="importCSV()">CSV一括登録</button>
 <div class="card">
 <h2>④ 登録馬一覧</h2>
 <div id="list">まだ馬が登録されていません。</div>
