@@ -185,11 +185,27 @@ horses.map((h,i)=>(i+1)+"番："+h.name).join("<br>");
 
 function predict(){
 if(horses.length<2){alert("2頭以上登録してください");return;}
-let sorted=horses.map(h=>({
+if(!window.KeibaAI){
+
+alert("AIエンジンが読み込まれていません");
+
+return;
+
+}
+
+let sorted=window.KeibaAI.predict(
+
+horses.map(h=>({
+
 ...h,
-score:h.ability*0.4+h.course*0.25+
-h.pace*0.2+h.jockey*0.15
-})).sort((a,b)=>b.score-a.score);
+
+recent:h.ability,
+
+style:h.pace
+
+}))
+
+);
 document.getElementById("result").innerHTML=
 "<p>"+raceType+" "+document.getElementById("place").value+
 " "+document.getElementById("race").value+"R</p>"+
