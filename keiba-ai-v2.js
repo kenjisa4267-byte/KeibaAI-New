@@ -2,15 +2,15 @@
 
 /* =================================
 
-   KEIBA AI V2.1
+   KEIBA AI V2.2
 
-   総合評価予想エンジン
+   過去5走対応・総合評価予想エンジン
 
 ================================= */
 
 window.KeibaAI = {
 
-  version: "2.1",
+  version: "2.2",
 
   predict: function(horses) {
 
@@ -22,7 +22,7 @@ window.KeibaAI = {
 
     const factors = [
 
-      { key: "recent", fallback: "ability", weight: 0.35 },
+      { key: "recentRuns", fallback: "recent", weight: 0.35 },
 
       { key: "course", weight: 0.25 },
 
@@ -40,11 +40,41 @@ window.KeibaAI = {
 
       factors.forEach(factor => {
 
-        let value = horse[factor.key];
+        let value;
 
-        if (value === undefined && factor.fallback) {
+        if (factor.key === "recentRuns") {
 
-          value = horse[factor.fallback];
+          if (Array.isArray(horse.recentRuns) &&
+
+              horse.recentRuns.length > 0) {
+
+            const runs = horse.recentRuns
+
+              .map(Number)
+
+              .filter(v => Number.isFinite(v) && v >= 1 && v <= 10);
+
+            value = runs.length
+
+              ? runs.reduce((a, b) => a + b, 0) / runs.length
+
+              : horse.recent;
+
+          } else {
+
+            value = horse.recent;
+
+          }
+
+        } else {
+
+          value = horse[factor.key];
+
+          if (value === undefined && factor.fallback) {
+
+            value = horse[factor.fallback];
+
+          }
 
         }
 
@@ -56,7 +86,7 @@ window.KeibaAI = {
 
         }
 
-        breakdown[factor.key] = value;
+        breakdown[factor.key] = Math.round(value * 100) / 100;
 
         total += value * factor.weight;
 
@@ -72,7 +102,7 @@ window.KeibaAI = {
 
         originalIndex: index,
 
-        evaluation: "手入力評価による暫定予想"
+        evaluation: "暫定評価"
 
       };
 
