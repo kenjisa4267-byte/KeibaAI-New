@@ -2,55 +2,89 @@
 
 /* =================================
 
-   KEIBA AI V2
+   KEIBA AI V2.1
 
-   競馬予想エンジン
+   総合評価予想エンジン
 
 ================================= */
 
 window.KeibaAI = {
 
-  version: "2.0",
+  version: "2.1",
 
   predict: function(horses) {
 
-    const results = horses.map(horse => {
+    if (!Array.isArray(horses) || horses.length < 2) {
 
-      const recent = Number(horse.recent || 5);
+      return [];
 
-      const course = Number(horse.course || 5);
+    }
 
-      const style = Number(horse.style || 5);
+    const factors = [
 
-      const jockey = Number(horse.jockey || 5);
+      { key: "recent", fallback: "ability", weight: 0.35 },
 
-      // 基礎能力評価
+      { key: "course", weight: 0.25 },
 
-      let score =
+      { key: "style", fallback: "pace", weight: 0.20 },
 
-        recent * 0.35 +
+      { key: "jockey", weight: 0.20 }
 
-        course * 0.25 +
+    ];
 
-        style * 0.20 +
+    const results = horses.map((horse, index) => {
 
-        jockey * 0.20;
+      let total = 0;
+
+      let breakdown = {};
+
+      factors.forEach(factor => {
+
+        let value = horse[factor.key];
+
+        if (value === undefined && factor.fallback) {
+
+          value = horse[factor.fallback];
+
+        }
+
+        value = Number(value);
+
+        if (!Number.isFinite(value) || value < 1 || value > 10) {
+
+          value = 5;
+
+        }
+
+        breakdown[factor.key] = value;
+
+        total += value * factor.weight;
+
+      });
 
       return {
 
         ...horse,
 
-        score: Math.round(score * 100) / 100
+        score: Math.round(total * 100) / 100,
+
+        breakdown: breakdown,
+
+        originalIndex: index,
+
+        evaluation: "手入力評価による暫定予想"
 
       };
 
     });
 
-    // 総合評価順に並べる
+    results.sort((a, b) =>
 
-    results.sort((a, b) => b.score - a.score);
+      b.score - a.score ||
 
-    // 予想順位を付ける
+      a.originalIndex - b.originalIndex
+
+    );
 
     results.forEach((horse, index) => {
 
