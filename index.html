@@ -57,9 +57,19 @@ td,th{padding:10px;border-bottom:1px solid #ddd;text-align:center}
 </div>
 <label>CSV一括登録</label>
 
-<input type="file" id="csvFile" accept=".csv">
+<label>出走馬CSV（horselist）</label>
 
-<button onclick="importCSV()">CSV一括登録</button>
+<input type="file" id="horseFile" accept=".csv">
+
+<label>レース情報CSV（racelist）</label>
+
+<input type="file" id="raceFile" accept=".csv">
+
+<label>払戻CSV（payback）</label>
+
+<input type="file" id="paybackFile" accept=".csv">
+
+<button onclick="importNARCSV()">CSV一括登録</button>
 <div class="card">
 <h2>④ 登録馬一覧</h2>
 <div id="list">まだ馬が登録されていません。</div>
@@ -157,6 +167,121 @@ async function importCSV(){
  };
 
  reader.readAsText(file,"UTF-8");
+
+}
+async function importNARCSV(){
+
+  const horseFile=document.getElementById("horseFile").files[0];
+
+  const raceFile=document.getElementById("raceFile").files[0];
+
+  const paybackFile=document.getElementById("paybackFile").files[0];
+
+  if(!horseFile){
+
+    alert("出走馬CSVを選択してください");
+
+    return;
+
+  }
+
+  function readFile(file){
+
+    return new Promise((resolve,reject)=>{
+
+      const reader=new FileReader();
+
+      reader.onload=()=>resolve(reader.result);
+
+      reader.onerror=()=>reject(reader.error);
+
+      reader.readAsText(file,"UTF-8");
+
+    });
+
+  }
+
+  try{
+
+    const csv=await readFile(horseFile);
+
+    const rows=csv.replace(/^\uFEFF/,"").split(/\r?\n/);
+
+    function splitCSV(line){
+
+      return line.match(/(".*?"|[^,]+|)(?=,|$)/g)
+
+        .map(v=>v.replace(/^"|"$/g,"").trim());
+
+    }
+
+    const header=splitCSV(rows[0]);
+
+    const nameIndex=header.findIndex(v=>v.includes("馬名"));
+
+    if(nameIndex<0){
+
+      alert("馬名の列が見つかりません。CSVの形式を確認します");
+
+      return;
+
+    }
+
+    let count=0;
+
+    let skip=0;
+
+    rows.slice(1).forEach(line=>{
+
+      if(!line.trim())return;
+
+      const cols=splitCSV(line);
+
+      const name=cols[nameIndex];
+
+      if(!name){
+
+        skip++;
+
+        return;
+
+      }
+
+      if(horses.some(h=>h.name===name)){
+
+        skip++;
+
+        return;
+
+      }
+
+      horses.push({
+
+        name:name,
+
+        ability:5,
+
+        course:5,
+
+        pace:5,
+
+        jockey:5
+
+      });
+
+      count++;
+
+    });
+
+    showHorses();
+
+    alert(count+"頭を登録しました。スキップ："+skip+"件");
+
+  }catch(error){
+
+    alert("CSV読み込みエラー："+error.message);
+
+  }
 
 }
 function addHorse(){
