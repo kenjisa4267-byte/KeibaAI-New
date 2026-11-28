@@ -38,6 +38,8 @@ td,th{padding:10px;border-bottom:1px solid #ddd;text-align:center}
 <input id="place" placeholder="例：東京・船橋">
 <label>レース番号</label>
 <input id="race" type="number" placeholder="例：11">
+<label>開催日（任意・複数日ある場合は必須／例：20261128）</label>
+<input id="raceDate" inputmode="numeric" placeholder="例：20261128">
 </div>
 
 <div class="card">
@@ -170,119 +172,104 @@ async function importCSV(){
 
 }
 async function importNARCSV(){
-
   const horseFile=document.getElementById("horseFile").files[0];
-
   const raceFile=document.getElementById("raceFile").files[0];
-
   const paybackFile=document.getElementById("paybackFile").files[0];
+  const placeInput=document.getElementById("place").value.trim();
+  const raceInput=document.getElementById("race").value.trim();
+  const dateInput=(document.getElementById("raceDate")?.value||"").replace(/\\D/g,"");
 
-  if(!horseFile){
-
-    alert("出走馬CSVを選択してください");
-
+  if(!window.KeibaCSV){
+    alert("CSV読み込み機能が見つかりません。ページを再読み込みしてください。");
     return;
-
   }
-
-  function readFile(file){
-
-    return new Promise((resolve,reject)=>{
-
-      const reader=new FileReader();
-
-      reader.onload=()=>resolve(reader.result);
-
-      reader.onerror=()=>reject(reader.error);
-
-      reader.readAsText(file,"UTF-8");
-
-    });
-
+  if(!horseFile || !raceFile){
+    alert("出走馬CSV（horselist）とレース情報CSV（racelist）の両方を選択してください。");
+    return;
+  }
+  if(!placeInput || !raceInput){
+    alert("先に競馬場とレース番号を入力してください。");
+    return;
   }
 
   try{
+    const files=[horseFile,raceFile];
+    if(paybackFile) files.push(paybackFile);
+    const data=await window.KeibaCSV.importFiles(files);
+    const norm=value=>String(value||"").replace(/[\\s　]/g,"").trim();
+    const digits=value=>String(value||"").replace(/\\D/g,"");
+    const placeKey=norm(placeInput);
+    const raceKey=digits(raceInput);
 
-    const csv=await readFile(horseFile);
+    const matchingRaces=data.races.filter(r=>
+      norm(r["競馬場"])===placeKey &&
+      digits(r["レース番号"])===raceKey &&
+      (!dateInput || digits(r["競走年月日"])===dateInput)
+    );
 
-    const rows=csv.replace(/^\uFEFF/,"").split(/\r?\n/);
-
-    function splitCSV(line){
-
-      return line.match(/(".*?"|[^,]+|)(?=,|$)/g)
-
-        .map(v=>v.replace(/^"|"$/g,"").trim());
-
-    }
-
-    const header=splitCSV(rows[0]);
-
-    const nameIndex=header.findIndex(v=>v.includes("馬名"));
-
-    if(nameIndex<0){
-
-      alert("馬名の列が見つかりません。CSVの形式を確認します");
-
+    if(matchingRaces.length===0){
+      alert("入力した競馬場・レース番号に一致するレースがracelistにありません。競馬場名はCSVと同じ表記で入力してください。");
       return;
-
     }
 
-    let count=0;
+    const raceDates=[...new Set(matchingRaces.map(r=>digits(r["競走年月日"])).filter(Boolean))];
+    if(raceDates.length>1){
+      alert("同じ競馬場・レース番号が複数の日付にあります。開催日欄にYYYYMMDD形式で入力してください。候補："+raceDates.join("、"));
+      return;
+    }
 
-    let skip=0;
+    const selectedRace=matchingRaces[0];
+    const selectedDate=digits(selectedRace["競走年月日"]);
+    const selectedHorses=data.horses.filter(h=>
+      norm(h["競馬場"])===placeKey &&
+      digits(h["レース番号"])===raceKey &&
+      digits(h["競走年月日"])===selectedDate
+    );
 
-    rows.slice(1).forEach(line=>{
+    if(selectedHorses.length===0){
+      alert("該当レースの出走馬がhorselistに見つかりません。CSVの開催日・競馬場・レース番号を確認してください。");
+      return;
+    }
 
-      if(!line.trim())return;
-
-      const cols=splitCSV(line);
-
-      const name=cols[nameIndex];
-
-      if(!name){
-
-        skip++;
-
-        return;
-
-      }
-
-      if(horses.some(h=>h.name===name)){
-
-        skip++;
-
-        return;
-
-      }
-
+    horses=[];
+    selectedHorses.forEach(h=>{
+      const name=String(h["馬名"]||"").trim();
+      if(!name) return;
+      const weight=Number(String(h["負担重量"]||"").replace(/[^0-9.]/g,""));
+      const finish=Number(String(h["着順"]||"").replace(/[^0-9]/g,""));
       horses.push({
-
-        name:name,
-
+        name,
         ability:5,
-
         course:5,
-
         pace:5,
-
-        jockey:5
-
+        jockey:5,
+        gate:Number(h["枠番"])||0,
+        number:Number(h["馬番"])||0,
+        jockeyName:String(h["騎手名"]||""),
+        trainer:String(h["調教師"]||""),
+        carriedWeight:Number.isFinite(weight)?weight:null,
+        finish:Number.isFinite(finish)&&finish>0?finish:null
       });
-
-      count++;
-
     });
 
+    document.getElementById("place").value=selectedRace["競馬場"]||placeInput;
+    document.getElementById("race").value=raceKey;
+    const dateBox=document.getElementById("raceDate");
+    if(dateBox) dateBox.value=selectedDate;
     showHorses();
 
-    alert(count+"頭を登録しました。スキップ："+skip+"件");
-
+    const raceInfo=[
+      selectedRace["競走年月日"],
+      selectedRace["競走種類名称"],
+      selectedRace["レース名"],
+      selectedRace["距離"] ? selectedRace["距離"]+"m" : "",
+      selectedRace["天候"] ? "天候："+selectedRace["天候"] : "",
+      selectedRace["馬場"] ? "馬場："+selectedRace["馬場"] : ""
+    ].filter(Boolean).join("／");
+    alert(raceInfo+"\n"+horses.length+"頭を登録しました。\n払戻CSV："+(paybackFile?"読み込み済み（払戻表示は次段階で対応）":"未選択"));
   }catch(error){
-
-    alert("CSV読み込みエラー："+error.message);
-
+    alert("CSV読み込みエラー："+(error?.message||error));
   }
-
 }
 function addHorse(){
 let name=document.getElementById("horse").value.trim();
