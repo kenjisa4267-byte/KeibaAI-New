@@ -177,72 +177,54 @@ async function importNARCSV(){
   const paybackFile=document.getElementById("paybackFile").files[0];
   const placeInput=document.getElementById("place").value.trim();
   const raceInput=document.getElementById("race").value.trim();
-  const dateInput=(document.getElementById("raceDate")?.value||"").replace(/\\D/g,"");
+  const dateInput=(document.getElementById("raceDate")?.value||"").replace(/[^\d]/g,"");
 
-  if(!window.KeibaCSV){
-    alert("CSV読み込み機能が見つかりません。ページを再読み込みしてください。");
-    return;
-  }
-  if(!horseFile || !raceFile){
-    alert("出走馬CSV（horselist）とレース情報CSV（racelist）の両方を選択してください。");
-    return;
-  }
-  if(!placeInput || !raceInput){
-    alert("先に競馬場とレース番号を入力してください。");
-    return;
-  }
+  if(!window.KeibaCSV){ alert("CSV読み込み機能が見つかりません。ページを再読み込みしてください。"); return; }
+  if(!horseFile || !raceFile){ alert("出走馬CSV（horselist）とレース情報CSV（racelist）の両方を選択してください。"); return; }
+  if(!placeInput || !raceInput){ alert("先に競馬場とレース番号を入力してください。"); return; }
 
   try{
     const files=[horseFile,raceFile];
     if(paybackFile) files.push(paybackFile);
     const data=await window.KeibaCSV.importFiles(files);
-    const norm=value=>String(value||"").replace(/[\\s　]/g,"").trim();
-    const digits=value=>String(value||"").replace(/\\D/g,"");
-    const placeKey=norm(placeInput);
-    const raceKey=digits(raceInput);
-
+    const clean=value=>String(value??"").normalize("NFKC").replace(/[\s\u3000\uFEFF]/g,"").trim();
+    const digits=value=>String(value??"").normalize("NFKC").replace(/[^\d]/g,"");
+    const field=(row,name,index)=>{
+      if(Object.prototype.hasOwnProperty.call(row,name)) return row[name];
+      const key=Object.keys(row).find(k=>clean(k)===clean(name));
+      return key!==undefined ? row[key] : (index!==undefined ? Object.values(row)[index] : "");
+    };
+    const placeKey=clean(placeInput), raceKey=digits(raceInput);
     const matchingRaces=data.races.filter(r=>
-      norm(r["競馬場"])===placeKey &&
-      digits(r["レース番号"])===raceKey &&
-      (!dateInput || digits(r["競走年月日"])===dateInput)
+      clean(field(r,"競馬場",1))===placeKey &&
+      digits(field(r,"レース番号",3))===raceKey &&
+      (!dateInput || digits(field(r,"競走年月日",2))===dateInput)
     );
 
-    if(matchingRaces.length===0){
-      alert("入力した競馬場・レース番号に一致するレースがracelistにありません。競馬場名はCSVと同じ表記で入力してください。");
+    if(!matchingRaces.length){
+      const available=data.races.slice(0,3).map(r=>clean(field(r,"競馬場",1))+"/"+digits(field(r,"競走年月日",2))+"/"+digits(field(r,"レース番号",3))).join("、");
+      alert("レース情報CSVを読み込みましたが一致するレースが見つかりません。入力："+placeKey+"・"+raceKey+"R・"+(dateInput||"日付指定なし")+"。CSV内の先頭データ："+available);
       return;
     }
-
-    const raceDates=[...new Set(matchingRaces.map(r=>digits(r["競走年月日"])).filter(Boolean))];
-    if(raceDates.length>1){
-      alert("同じ競馬場・レース番号が複数の日付にあります。開催日欄にYYYYMMDD形式で入力してください。候補："+raceDates.join("、"));
-      return;
-    }
-
     const selectedRace=matchingRaces[0];
-    const selectedDate=digits(selectedRace["競走年月日"]);
+    const selectedDate=digits(field(selectedRace,"競走年月日",2));
     const selectedHorses=data.horses.filter(h=>
-      norm(h["競馬場"])===placeKey &&
-      digits(h["レース番号"])===raceKey &&
-      digits(h["競走年月日"])===selectedDate
+      clean(field(h,"競馬場",1))===placeKey &&
+      digits(field(h,"レース番号",3))===raceKey &&
+      digits(field(h,"競走年月日",2))===selectedDate
     );
+    if(!selectedHorses.length){ alert("レース情報は見つかりましたが、該当レースの出走馬がhorselistに見つかりません。"); return; }
 
-    if(selectedHorses.length===0){
-      alert("該当レースの出走馬がhorselistに見つかりません。CSVの開催日・競馬場・レース番号を確認してください。");
-      return;
-    }
-
-    // NARの戦績表記「勝-2着-3着-その他」から、実績スコアを算出
-    const recordScore=(record)=>{
-      const m=String(record||"").match(/^(\\d+)-(\\d+)-(\\d+)-(\\d+)$/);
+    const recordScore=record=>{
+      const m=String(record||"").match(/^(\d+)-(\d+)-(\d+)-(\d+)$/);
       if(!m) return {score:5,starts:0,known:false};
-      const w=Number(m[1]), p=Number(m[2]), t=Number(m[3]), o=Number(m[4]);
-      const starts=w+p+t+o;
+      const w=+m[1],p=+m[2],t=+m[3],o=+m[4],starts=w+p+t+o;
       if(!starts) return {score:5,starts:0,known:false};
       const rate=(w+0.65*p+0.35*t)/starts;
       return {score:Math.max(1,Math.min(10,Math.round((4+6*rate)*100)/100)),starts,known:true};
     };
     const weightedRecord=(a,b)=>{
-      const parts=[a,b].filter(x=>x.known && x.starts>0);
+      const parts=[a,b].filter(x=>x.known&&x.starts>0);
       if(!parts.length) return {score:5,known:false};
       const total=parts.reduce((s,x)=>s+x.starts,0);
       return {score:Math.round(parts.reduce((s,x)=>s+x.score*x.starts,0)/total*100)/100,known:true};
@@ -250,47 +232,36 @@ async function importNARCSV(){
 
     horses=[];
     selectedHorses.forEach(h=>{
-      const name=String(h["馬名"]||"").trim();
+      const name=String(field(h,"馬名",7)||"").trim();
       if(!name) return;
-      const overall=recordScore(h["全成績"]);
-      const venue=recordScore(h["当競馬場成績"]);
-      const distance=recordScore(h["うち当距離成績"]);
-      const jockeyRecord=recordScore(h["騎手成績"]);
+      const overall=recordScore(field(h,"全成績",25));
+      const venue=recordScore(field(h,"当競馬場成績",28));
+      const distance=recordScore(field(h,"うち当距離成績",29));
+      const jockeyRecord=recordScore(field(h,"騎手成績",18));
       const courseRecord=weightedRecord(venue,distance);
-      const weight=Number(String(h["負担重量"]||"").replace(/[^0-9.]/g,""));
-      const finish=Number(String(h["着順"]||"").replace(/[^0-9]/g,""));
+      const weight=Number(String(field(h,"負担重量",17)||"").replace(/[^\d.]/g,""));
+      const finish=Number(String(field(h,"着順",32)||"").replace(/[^\d]/g,""));
       horses.push({
-        name,
-        ability:overall.score,
-        course:courseRecord.score,
-        pace:5,
-        jockey:jockeyRecord.score,
-        abilityDataAvailable:overall.known,
-        courseDataAvailable:courseRecord.known,
-        jockeyDataAvailable:jockeyRecord.known,
-        paceDataAvailable:false,
-        gate:Number(h["枠番"])||0,
-        number:Number(h["馬番"])||0,
-        jockeyName:String(h["騎手名"]||""),
-        trainer:String(h["調教師"]||""),
+        name, ability:overall.score, course:courseRecord.score, pace:5, jockey:jockeyRecord.score,
+        abilityDataAvailable:overall.known, courseDataAvailable:courseRecord.known,
+        jockeyDataAvailable:jockeyRecord.known, paceDataAvailable:false,
+        gate:Number(field(h,"枠番",4))||0, number:Number(field(h,"馬番",6))||0,
+        jockeyName:String(field(h,"騎手名",15)||""), trainer:String(field(h,"調教師",19)||""),
         carriedWeight:Number.isFinite(weight)?weight:null,
         finish:Number.isFinite(finish)&&finish>0?finish:null
       });
     });
-
-    document.getElementById("place").value=selectedRace["競馬場"]||placeInput;
+    if(!horses.length){ alert("対象レースは見つかりましたが、馬名を読み取れませんでした。"); return; }
+    document.getElementById("place").value=field(selectedRace,"競馬場",1)||placeInput;
     document.getElementById("race").value=raceKey;
     const dateBox=document.getElementById("raceDate");
     if(dateBox) dateBox.value=selectedDate;
     showHorses();
-
     const raceInfo=[
-      selectedRace["競走年月日"],
-      selectedRace["競走種類名称"],
-      selectedRace["レース名"],
-      selectedRace["距離"] ? selectedRace["距離"]+"m" : "",
-      selectedRace["天候"] ? "天候："+selectedRace["天候"] : "",
-      selectedRace["馬場"] ? "馬場："+selectedRace["馬場"] : ""
+      selectedDate,field(selectedRace,"競走種類名称",5),field(selectedRace,"レース名",6),
+      field(selectedRace,"距離",24)?field(selectedRace,"距離",24)+"m":"",
+      field(selectedRace,"天候",25)?"天候："+field(selectedRace,"天候",25):"",
+      field(selectedRace,"馬場",26)?"馬場："+field(selectedRace,"馬場",26):""
     ].filter(Boolean).join("／");
     alert(raceInfo+"\n"+horses.length+"頭を登録しました。\n払戻CSV："+(paybackFile?"読み込み済み（払戻表示は次段階で対応）":"未選択"));
   }catch(error){
