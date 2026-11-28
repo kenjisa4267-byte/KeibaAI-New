@@ -315,15 +315,29 @@ style:h.pace
 }))
 
 );
+const predictionRows=sorted.map((h,i)=>({...h,predictedRank:i+1}));
+const actualRows=predictionRows.filter(h=>Number.isFinite(Number(h.finish))&&Number(h.finish)>0);
+const comparison=actualRows.length>=2
+  ? "<h3>⑥ 予想と実際の着順の照合</h3>"+
+    "<p>実際の結果がCSVに含まれる"+actualRows.length+"頭で比較しています。</p>"+
+    "<table><tr><th>実着順</th><th>馬名</th><th>AI予想</th><th>順位差</th></tr>"+
+    actualRows.slice().sort((a,b)=>a.finish-b.finish).map(h=>
+      "<tr><td>"+h.finish+"着</td><td>"+h.name+"</td><td>"+h.predictedRank+"位</td><td>"+(h.predictedRank-h.finish>0?"+":"")+(h.predictedRank-h.finish)+"</td></tr>"
+    ).join("")+"</table>"+
+    "<p class='result'>実際の1着馬："+(actualRows.find(h=>h.finish===1)?.name||"不明")+
+    " ／ AI予想順位："+(actualRows.find(h=>h.finish===1)?.predictedRank||"不明")+"位</p>"+
+    "<p>AI予想上位3頭のうち実際に3着以内に入った頭数："+actualRows.filter(h=>h.predictedRank<=3&&h.finish<=3).length+"頭</p>"
+  : "<h3>⑥ 予想と実際の着順の照合</h3><p>このCSVには照合できる実際の着順がありません。結果入りのhorselist CSVを選んでください。</p>";
 document.getElementById("result").innerHTML=
 "<p>"+raceType+" "+document.getElementById("place").value+
 " "+document.getElementById("race").value+"R</p>"+
 "<table><tr><th>順位</th><th>馬名</th><th>評価点</th></tr>"+
-sorted.map((h,i)=>"<tr><td>"+(i+1)+
+predictionRows.map(h=>"<tr><td>"+h.predictedRank+
 "</td><td>"+h.name+"</td><td>"+h.score.toFixed(2)+
 "</td></tr>").join("")+"</table>"+
 "<p class='result'>1位候補："+sorted[0].name+"</p>"+
-"<p>穴馬候補："+(sorted.length>=3?sorted[sorted.length-1].name:"登録馬不足")+"</p>";
+"<p>穴馬候補："+(sorted.length>=3?sorted[sorted.length-1].name:"登録馬不足")+"</p>"+
+comparison;
 }
 </script>
 <script src="keiba-csv.js"></script>
