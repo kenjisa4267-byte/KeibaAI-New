@@ -231,18 +231,44 @@ async function importNARCSV(){
       return;
     }
 
+    // NARの戦績表記「勝-2着-3着-その他」から、実績スコアを算出
+    const recordScore=(record)=>{
+      const m=String(record||"").match(/^(\\d+)-(\\d+)-(\\d+)-(\\d+)$/);
+      if(!m) return {score:5,starts:0,known:false};
+      const w=Number(m[1]), p=Number(m[2]), t=Number(m[3]), o=Number(m[4]);
+      const starts=w+p+t+o;
+      if(!starts) return {score:5,starts:0,known:false};
+      const rate=(w+0.65*p+0.35*t)/starts;
+      return {score:Math.max(1,Math.min(10,Math.round((4+6*rate)*100)/100)),starts,known:true};
+    };
+    const weightedRecord=(a,b)=>{
+      const parts=[a,b].filter(x=>x.known && x.starts>0);
+      if(!parts.length) return {score:5,known:false};
+      const total=parts.reduce((s,x)=>s+x.starts,0);
+      return {score:Math.round(parts.reduce((s,x)=>s+x.score*x.starts,0)/total*100)/100,known:true};
+    };
+
     horses=[];
     selectedHorses.forEach(h=>{
       const name=String(h["馬名"]||"").trim();
       if(!name) return;
+      const overall=recordScore(h["全成績"]);
+      const venue=recordScore(h["当競馬場成績"]);
+      const distance=recordScore(h["うち当距離成績"]);
+      const jockeyRecord=recordScore(h["騎手成績"]);
+      const courseRecord=weightedRecord(venue,distance);
       const weight=Number(String(h["負担重量"]||"").replace(/[^0-9.]/g,""));
       const finish=Number(String(h["着順"]||"").replace(/[^0-9]/g,""));
       horses.push({
         name,
-        ability:5,
-        course:5,
+        ability:overall.score,
+        course:courseRecord.score,
         pace:5,
-        jockey:5,
+        jockey:jockeyRecord.score,
+        abilityDataAvailable:overall.known,
+        courseDataAvailable:courseRecord.known,
+        jockeyDataAvailable:jockeyRecord.known,
+        paceDataAvailable:false,
         gate:Number(h["枠番"])||0,
         number:Number(h["馬番"])||0,
         jockeyName:String(h["騎手名"]||""),
